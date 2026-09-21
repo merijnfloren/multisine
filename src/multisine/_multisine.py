@@ -71,15 +71,6 @@ class RandomPhaseMultisine:
     seed: int
 
 
-@dataclass(frozen=True)
-class _FrequencyRange:
-    """Validated frequency-grid values used to construct frequency metadata."""
-
-    f_res: float
-    f_min_bin: int
-    f_max_bin: int
-
-
 def random_phase_multisine(
     n_samples: int,
     fs: float,
@@ -126,19 +117,17 @@ def random_phase_multisine(
         amplitude; and the random seed used.
 
     """
-    frequency_range = _validate_arguments(
+    _validate_arguments(
         n_samples=n_samples,
         fs=fs,
         amplitude=amplitude,
         nu=nu,
         additional_count=n_realizations,
         additional_count_name="n_realizations",
-        f_min=f_min,
-        f_max=f_max,
         seed=seed,
     )
 
-    freq = _create_frequency_info(n_samples, fs, frequency_range)
+    freq = _create_frequency_info(n_samples, fs, f_min, f_max)
     rng = np.random.default_rng(seed)
 
     n_freqs = freq.freqs.size
@@ -213,19 +202,17 @@ def random_phase_orthogonal_multisine(
         amplitude; and the random seed used.
 
     """
-    frequency_range = _validate_arguments(
+    _validate_arguments(
         n_samples=n_samples,
         fs=fs,
         amplitude=amplitude,
         nu=nu,
         additional_count=n_experiments,
         additional_count_name="n_experiments",
-        f_min=f_min,
-        f_max=f_max,
         seed=seed,
     )
 
-    freq = _create_frequency_info(n_samples, fs, frequency_range)
+    freq = _create_frequency_info(n_samples, fs, f_min, f_max)
     rng = np.random.default_rng(seed)
 
     n_freqs = freq.freqs.size
@@ -261,11 +248,8 @@ def _validate_arguments(
     nu: int,
     additional_count: int,
     additional_count_name: str,
-    f_min: float | None,
-    f_max: float | None,
     seed: int,
-) -> _FrequencyRange:
-    """Validate the arguments shared by the multisine generators."""
+) -> None:
     _validate_sampling_frequency(fs)
     _validate_strictly_positive_int(n_samples, "n_samples")
     _validate_strictly_positive_int(nu, "nu")
@@ -279,32 +263,6 @@ def _validate_arguments(
             f"allow for a meaningful frequency range, got n_samples={n_samples!r}."
         )
         raise ValueError(msg)
-
-    f_res = fs / n_samples
-    f_min_bin = 1 if f_min is None else int(np.round(f_min / f_res))
-    f_max_bin = n_samples // 2 - 1 if f_max is None else int(np.round(f_max / f_res))
-    f_min_bin = max(f_min_bin, 1)
-
-    if f_max_bin >= n_samples // 2:
-        msg = (
-            f"The maximum frequency must be less than the Nyquist frequency "
-            f"(fs / 2), got f_max={f_max!r}, fs={fs!r}."
-        )
-        raise ValueError(msg)
-
-    if f_min_bin > f_max_bin:
-        msg = (
-            f"The minimum frequency must be less than or equal to the maximum "
-            f"frequency, got f_min={f_min!r}, f_max={f_max!r}."
-        )
-        raise ValueError(msg)
-
-    return _FrequencyRange(
-        f_res=f_res,
-        f_min_bin=f_min_bin,
-        f_max_bin=f_max_bin,
-    )
-
 
 def _validate_sampling_frequency(fs: float) -> None:
     if isinstance(fs, bool) or not isinstance(fs, Real):
@@ -353,18 +311,38 @@ def _validate_strictly_positive_int(value: int, name: str) -> None:
 def _create_frequency_info(
     n_samples: int,
     fs: float,
-    frequency_range: _FrequencyRange,
+    f_min: float | None,
+    f_max: float | None,
 ) -> FrequencyInfo:
+    f_res = fs / n_samples
+    f_min_bin = 1 if f_min is None else int(np.round(f_min / f_res))
+    f_min_bin = max(f_min_bin, 1)  # ensure that DC is not excited
+    f_max_bin = n_samples // 2 - 1 if f_max is None else int(np.round(f_max / f_res))
+
+    if f_max_bin >= n_samples // 2:
+        msg = (
+            f"The maximum frequency must be less than the Nyquist frequency "
+            f"(fs / 2), got f_max={f_max!r}, fs={fs!r}."
+        )
+        raise ValueError(msg)
+
+    if f_min_bin > f_max_bin:
+        msg = (
+            f"The minimum frequency must be less than or equal to the maximum "
+            f"frequency, got f_min={f_min!r}, f_max={f_max!r}."
+        )
+        raise ValueError(msg)
+
     n_freqs = n_samples // 2 + 1
-    freqs = np.arange(n_freqs) * frequency_range.f_res
-    excited_bins = np.arange(frequency_range.f_min_bin, frequency_range.f_max_bin + 1)
+    freqs = np.arange(n_freqs) * f_res
+    excited_bins = np.arange(f_min_bin, f_max_bin + 1)
     non_excited_bins = np.setdiff1d(np.arange(n_freqs), excited_bins)
 
     return FrequencyInfo(
         fs=fs,
-        f_res=frequency_range.f_res,
-        f_min=frequency_range.f_min_bin * frequency_range.f_res,
-        f_max=frequency_range.f_max_bin * frequency_range.f_res,
+        f_res=f_res,
+        f_min=f_min_bin * f_res,
+        f_max=f_max_bin * f_res,
         freqs=freqs,
         excited_bins=excited_bins,
         non_excited_bins=non_excited_bins,
