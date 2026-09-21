@@ -124,6 +124,8 @@ def random_phase_multisine(
         nu=nu,
         additional_count=n_realizations,
         additional_count_name="n_realizations",
+        f_min=f_min,
+        f_max=f_max,
         seed=seed,
     )
 
@@ -209,6 +211,8 @@ def random_phase_orthogonal_multisine(
         nu=nu,
         additional_count=n_experiments,
         additional_count_name="n_experiments",
+        f_min=f_min,
+        f_max=f_max,
         seed=seed,
     )
 
@@ -248,6 +252,8 @@ def _validate_arguments(
     nu: int,
     additional_count: int,
     additional_count_name: str,
+    f_min: float | None,
+    f_max: float | None,
     seed: int,
 ) -> None:
     _validate_sampling_frequency(fs)
@@ -263,6 +269,9 @@ def _validate_arguments(
             f"allow for a meaningful frequency range, got n_samples={n_samples!r}."
         )
         raise ValueError(msg)
+
+    _get_frequency_bins(n_samples, fs, f_min, f_max)
+
 
 def _validate_sampling_frequency(fs: float) -> None:
     if isinstance(fs, bool) or not isinstance(fs, Real):
@@ -315,6 +324,32 @@ def _create_frequency_info(
     f_max: float | None,
 ) -> FrequencyInfo:
     f_res = fs / n_samples
+    f_min_bin, f_max_bin = _get_frequency_bins(n_samples, fs, f_min, f_max)
+
+    n_freqs = n_samples // 2 + 1
+    freqs = np.arange(n_freqs) * f_res
+    excited_bins = np.arange(f_min_bin, f_max_bin + 1)
+    non_excited_bins = np.setdiff1d(np.arange(n_freqs), excited_bins)
+
+    return FrequencyInfo(
+        fs=fs,
+        f_res=f_res,
+        f_min=f_min_bin * f_res,
+        f_max=f_max_bin * f_res,
+        freqs=freqs,
+        excited_bins=excited_bins,
+        non_excited_bins=non_excited_bins,
+    )
+
+
+def _get_frequency_bins(
+    n_samples: int,
+    fs: float,
+    f_min: float | None,
+    f_max: float | None,
+) -> tuple[int, int]:
+    """Calculate and validate the excited-bin bounds."""
+    f_res = fs / n_samples
     f_min_bin = 1 if f_min is None else int(np.round(f_min / f_res))
     f_min_bin = max(f_min_bin, 1)  # ensure that DC is not excited
     f_max_bin = n_samples // 2 - 1 if f_max is None else int(np.round(f_max / f_res))
@@ -333,20 +368,7 @@ def _create_frequency_info(
         )
         raise ValueError(msg)
 
-    n_freqs = n_samples // 2 + 1
-    freqs = np.arange(n_freqs) * f_res
-    excited_bins = np.arange(f_min_bin, f_max_bin + 1)
-    non_excited_bins = np.setdiff1d(np.arange(n_freqs), excited_bins)
-
-    return FrequencyInfo(
-        fs=fs,
-        f_res=f_res,
-        f_min=f_min_bin * f_res,
-        f_max=f_max_bin * f_res,
-        freqs=freqs,
-        excited_bins=excited_bins,
-        non_excited_bins=non_excited_bins,
-    )
+    return f_min_bin, f_max_bin
 
 
 def _ensure_requested_amplitude(
