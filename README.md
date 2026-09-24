@@ -1,19 +1,19 @@
 # multisine
 
-A minimal Python package for generating random-phase multisine excitation signals for frequency-domain system identification.
+A minimal Python package for generating multisine excitation signals for frequency-domain system identification.
 
-The multisine definitions implemented here follow *[System Identification: A Frequency Domain Approach, Second Edition][pintelon-schoukens]* by Rik Pintelon and Johan Schoukens (Wiley-IEEE Press, 2012).
+The multisine definitions implemented here follow *[System Identification: A Frequency Domain Approach, Second Edition][pintelon-schoukens]* by Rik Pintelon and Johan Schoukens.
 
 ## Status
 
-This first release is deliberately very limited.
+This initial 0.1.x release is deliberately limited in scope.
 It provides only random-phase multisine and orthogonal multisine generation.
 Its API, validation, and feature set will grow in later releases.
 
 ## Install
 
 Requires Python 3.10 or later.
-NumPy (version 1.24 or later) is the only runtime dependency and is installed automatically.
+Its only runtime dependency is NumPy (1.24 or later).
 
 Install with `pip`:
 
