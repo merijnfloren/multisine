@@ -1,4 +1,7 @@
+from collections.abc import Callable
+from dataclasses import dataclass
 from numbers import Real
+from typing import Literal
 
 import numpy as np
 import pytest
@@ -9,6 +12,42 @@ from multisine import (
     random_phase_multisine,
     random_phase_orthogonal_multisine,
 )
+from multisine._multisine import _convert_amplitude, _validate_amplitude
+
+
+@dataclass(frozen=True)
+class GeneratorCase:
+    """A public multisine generator and its expected output shapes."""
+
+    name: str
+    generator: Callable[..., RandomPhaseMultisine]
+    count_keyword: Literal["n_realizations", "n_experiments"]
+    repeated_shape: tuple[int, ...]
+    singleton_shape: tuple[int, ...]
+
+
+@pytest.fixture(
+    params=[
+        GeneratorCase(
+            name="random phase",
+            generator=random_phase_multisine,
+            count_keyword="n_realizations",
+            repeated_shape=(64, 2, 3),
+            singleton_shape=(64, 2),
+        ),
+        GeneratorCase(
+            name="orthogonal",
+            generator=random_phase_orthogonal_multisine,
+            count_keyword="n_experiments",
+            repeated_shape=(64, 2, 2, 3),
+            singleton_shape=(64, 2, 2),
+        ),
+    ],
+    ids=lambda case: case.name,
+)
+def generator_case(request: pytest.FixtureRequest) -> GeneratorCase:
+    assert isinstance(request.param, GeneratorCase)
+    return request.param
 
 
 def _assert_requested_rms_amplitude(
@@ -25,38 +64,57 @@ def _assert_requested_rms_amplitude(
     np.testing.assert_allclose(actual_amplitude, amplitude)
 
 
-def test_random_phase_multisine_has_requested_scalar_rms_amplitude() -> None:
-    amplitude = 1.5
-
-    multisine = random_phase_multisine(
-        n_samples=64,
-        fs=100.0,
-        amplitude=amplitude,
-        nu=2,
-        n_realizations=3,
+def _generate(
+    generator_case: GeneratorCase,
+    *,
+    amplitude: Real | ArrayLike = 1.0,
+    count: int = 1,
+    seed: int = 42,
+) -> RandomPhaseMultisine:
+    common_kwargs = {
+        "n_samples": 64,
+        "fs": 100.0,
+        "nu": 2,
+        "amplitude": amplitude,
+        "seed": seed,
+    }
+    if generator_case.count_keyword == "n_realizations":
+        return generator_case.generator(
+            **common_kwargs,
+            n_realizations=count,
+        )
+    return generator_case.generator(
+        **common_kwargs,
+        n_experiments=count,
     )
 
-    assert multisine.u.shape == (64, 2, 3)
+
+def test_generators_have_requested_scalar_rms_amplitude(
+    generator_case: GeneratorCase,
+) -> None:
+    amplitude = 1.5
+
+    multisine = _generate(generator_case, amplitude=amplitude, count=3)
+
+    assert multisine.u.shape == generator_case.repeated_shape
+    assert multisine.amplitude == amplitude
     _assert_requested_rms_amplitude(multisine, amplitude)
 
 
-def test_random_phase_multisine_omits_singleton_realization_axis() -> None:
-    multisine = random_phase_multisine(n_samples=64, fs=100.0, nu=2)
+def test_generators_omit_singleton_count_axis(generator_case: GeneratorCase) -> None:
+    multisine = _generate(generator_case)
 
-    assert multisine.u.shape == (64, 2)
+    assert multisine.u.shape == generator_case.singleton_shape
 
 
-def test_random_phase_multisine_has_requested_per_channel_rms_amplitudes() -> None:
+def test_generators_have_requested_per_channel_rms_amplitudes(
+    generator_case: GeneratorCase,
+) -> None:
     amplitude = (1.0, 2.0)
 
-    multisine = random_phase_multisine(
-        n_samples=64,
-        fs=100.0,
-        amplitude=amplitude,
-        nu=2,
-        n_realizations=3,
-    )
+    multisine = _generate(generator_case, amplitude=amplitude, count=3)
 
+    assert multisine.amplitude == amplitude
     _assert_requested_rms_amplitude(multisine, amplitude)
 
 
@@ -71,20 +129,13 @@ def test_random_phase_multisine_has_requested_per_channel_rms_amplitudes() -> No
         (np.array([1, 2]), (1.0, 2.0)),
     ],
 )
-def test_random_phase_multisine_normalizes_valid_amplitudes(
+def test_validate_amplitude_accepts_valid_values(
     amplitude: Real | ArrayLike,
     expected_amplitude: float | tuple[float, ...],
 ) -> None:
-    multisine = random_phase_multisine(
-        n_samples=64,
-        fs=100.0,
-        amplitude=amplitude,
-        nu=2,
-        n_realizations=3,
-    )
+    _validate_amplitude(amplitude, nu=2)
 
-    assert multisine.amplitude == expected_amplitude
-    _assert_requested_rms_amplitude(multisine, expected_amplitude)
+    assert _convert_amplitude(amplitude) == expected_amplitude
 
 
 @pytest.mark.parametrize(
@@ -96,107 +147,24 @@ def test_random_phase_multisine_normalizes_valid_amplitudes(
         (range(2), ValueError),
     ],
 )
-def test_random_phase_multisine_rejects_invalid_amplitudes(
+def test_validate_amplitude_rejects_invalid_values(
     amplitude: Real | ArrayLike,
     exception: type[Exception],
 ) -> None:
     with pytest.raises(exception):
-        random_phase_multisine(n_samples=64, fs=100.0, amplitude=amplitude, nu=2)
+        _validate_amplitude(amplitude, nu=2)
 
 
-def test_random_phase_multisine_is_reproducible_for_same_seed() -> None:
-    kwargs = {
-        "n_samples": 64,
-        "fs": 100.0,
-        "amplitude": (1.0, 2.0),
-        "nu": 2,
-        "n_realizations": 3,
-        "seed": 13,
-    }
-
-    first = random_phase_multisine(**kwargs)
-    second = random_phase_multisine(**kwargs)
+def test_generators_are_reproducible_for_same_seed(generator_case: GeneratorCase) -> None:
+    first = _generate(generator_case, amplitude=(1.0, 2.0), count=3, seed=13)
+    second = _generate(generator_case, amplitude=(1.0, 2.0), count=3, seed=13)
 
     np.testing.assert_array_equal(first.u, second.u)
 
 
-def test_random_phase_multisine_differs_for_different_seeds() -> None:
-    kwargs = {
-        "n_samples": 64,
-        "fs": 100.0,
-        "amplitude": (1.0, 2.0),
-        "nu": 2,
-        "n_realizations": 3,
-    }
-
-    first = random_phase_multisine(**kwargs, seed=13)
-    second = random_phase_multisine(**kwargs, seed=14)
-
-    assert not np.array_equal(first.u, second.u)
-
-
-def test_random_phase_orthogonal_multisine_has_requested_scalar_rms_amplitude() -> None:
-    amplitude = 1.5
-
-    multisine = random_phase_orthogonal_multisine(
-        n_samples=64,
-        fs=100.0,
-        nu=2,
-        amplitude=amplitude,
-        n_experiments=3,
-    )
-
-    assert multisine.u.shape == (64, 2, 2, 3)
-    _assert_requested_rms_amplitude(multisine, amplitude)
-
-
-def test_random_phase_orthogonal_multisine_omits_singleton_experiment_axis() -> None:
-    multisine = random_phase_orthogonal_multisine(n_samples=64, fs=100.0, nu=2)
-
-    assert multisine.u.shape == (64, 2, 2)
-
-
-def test_random_phase_orthogonal_multisine_has_requested_per_channel_rms_amplitudes() -> None:
-    amplitude = (1.0, 2.0)
-
-    multisine = random_phase_orthogonal_multisine(
-        n_samples=64,
-        fs=100.0,
-        nu=2,
-        amplitude=amplitude,
-        n_experiments=3,
-    )
-
-    _assert_requested_rms_amplitude(multisine, amplitude)
-
-
-def test_random_phase_orthogonal_multisine_is_reproducible_for_same_seed() -> None:
-    kwargs = {
-        "n_samples": 64,
-        "fs": 100.0,
-        "nu": 2,
-        "amplitude": (1.0, 2.0),
-        "n_experiments": 3,
-        "seed": 13,
-    }
-
-    first = random_phase_orthogonal_multisine(**kwargs)
-    second = random_phase_orthogonal_multisine(**kwargs)
-
-    np.testing.assert_array_equal(first.u, second.u)
-
-
-def test_random_phase_orthogonal_multisine_differs_for_different_seeds() -> None:
-    kwargs = {
-        "n_samples": 64,
-        "fs": 100.0,
-        "nu": 2,
-        "amplitude": (1.0, 2.0),
-        "n_experiments": 3,
-    }
-
-    first = random_phase_orthogonal_multisine(**kwargs, seed=13)
-    second = random_phase_orthogonal_multisine(**kwargs, seed=14)
+def test_generators_differ_for_different_seeds(generator_case: GeneratorCase) -> None:
+    first = _generate(generator_case, amplitude=(1.0, 2.0), count=3, seed=13)
+    second = _generate(generator_case, amplitude=(1.0, 2.0), count=3, seed=14)
 
     assert not np.array_equal(first.u, second.u)
 
