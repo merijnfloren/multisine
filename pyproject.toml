@@ -21,7 +21,7 @@ license = "MIT"
 name = "multisine"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.1.0"
+version = "0.1.1"
 
 [tool.ruff]
 line-length = 100
