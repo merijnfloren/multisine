@@ -1,43 +1,44 @@
-[project]
-name = "multisine"
-version = "0.1.0"
-description = "Generate random-phase multisine excitation signals."
-readme = "README.md"
-license = "MIT"
-authors = [
-    { email = "merijn.floren@gmail.com" }
-]
-requires-python = ">=3.10"
-dependencies = [
-    "numpy>=1.24",
-]
-
 [build-system]
-requires = ["uv_build>=0.10.4,<0.11.0"]
 build-backend = "uv_build"
+requires = ["uv_build>=0.10.4,<0.11.0"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "ruff>=0.16.8",
+  "pytest>=9.1.1",
+  "ruff>=0.16.8",
+  "toml-sort>=0.25.0"
 ]
+
+[project]
+authors = [
+  { email = "merijn.floren@gmail.com" }
+]
+dependencies = [
+  "numpy>=1.24"
+]
+description = "Generate random-phase multisine excitation signals."
+license = "MIT"
+name = "multisine"
+readme = "README.md"
+requires-python = ">=3.10"
+version = "0.1.0"
 
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
-select = ["ALL"]
 ignore = [
-    "CPY001",   # missing-copyright-notice
-    "D203",     # incorrect-blank-line-before-class
-    "D213",     # multi-line-summary-second-line
-    "PLR0913",  # too-many-arguments
+  "CPY001", # missing-copyright-notice
+  "D203", # incorrect-blank-line-before-class
+  "D213", # multi-line-summary-second-line
+  "PLR0913" # too-many-arguments
 ]
+select = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "D100",     # undocumented-public-module
-    "D103",     # undocumented-public-function
-    "INP001",   # implicit-namespace-package
-    "S101",     # assert
+  "D100", # undocumented-public-module
+  "D103", # undocumented-public-function
+  "INP001", # implicit-namespace-package
+  "S101" # assert
 ]
