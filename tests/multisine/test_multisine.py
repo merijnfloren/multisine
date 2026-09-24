@@ -1,4 +1,8 @@
+from numbers import Real
+
 import numpy as np
+import pytest
+from numpy.typing import ArrayLike
 
 from multisine import (
     RandomPhaseMultisine,
@@ -54,6 +58,50 @@ def test_random_phase_multisine_has_requested_per_channel_rms_amplitudes() -> No
     )
 
     _assert_requested_rms_amplitude(multisine, amplitude)
+
+
+@pytest.mark.parametrize(
+    ("amplitude", "expected_amplitude"),
+    [
+        (1, 1.0),
+        (np.float32(1.5), 1.5),
+        ((1, 2), (1.0, 2.0)),
+        ([1, 2], (1.0, 2.0)),
+        (range(1, 3), (1.0, 2.0)),
+        (np.array([1, 2]), (1.0, 2.0)),
+    ],
+)
+def test_random_phase_multisine_normalizes_valid_amplitudes(
+    amplitude: Real | ArrayLike,
+    expected_amplitude: float | tuple[float, ...],
+) -> None:
+    multisine = random_phase_multisine(
+        n_samples=64,
+        fs=100.0,
+        amplitude=amplitude,
+        nu=2,
+        n_realizations=3,
+    )
+
+    assert multisine.amplitude == expected_amplitude
+    _assert_requested_rms_amplitude(multisine, expected_amplitude)
+
+
+@pytest.mark.parametrize(
+    ("amplitude", "exception"),
+    [
+        (np.array([[1.0, 2.0]]), TypeError),
+        ([True, 1.0], TypeError),
+        (np.arange(2), ValueError),
+        (range(2), ValueError),
+    ],
+)
+def test_random_phase_multisine_rejects_invalid_amplitudes(
+    amplitude: Real | ArrayLike,
+    exception: type[Exception],
+) -> None:
+    with pytest.raises(exception):
+        random_phase_multisine(n_samples=64, fs=100.0, amplitude=amplitude, nu=2)
 
 
 def test_random_phase_multisine_is_reproducible_for_same_seed() -> None:

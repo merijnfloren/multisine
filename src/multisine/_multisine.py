@@ -3,10 +3,9 @@ from numbers import Integral, Real
 from typing import Any
 
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 MIN_NUMBER_OF_SAMPLES = 4  # keep in sync with docstrings
-
 
 @dataclass
 class FrequencyInfo:
@@ -75,7 +74,7 @@ def random_phase_multisine(
     n_samples: int,
     fs: float,
     *,
-    amplitude: float | tuple[float, ...] = 1.0,
+    amplitude: Real | ArrayLike = 1.0,
     nu: int = 1,
     n_realizations: int = 1,
     f_min: float | None = None,
@@ -90,11 +89,13 @@ def random_phase_multisine(
         Number of samples in each realization.
     fs : float
         Sampling frequency in Hz.
-    amplitude : float or tuple of float, optional
-        Desired time-domain root-mean-square (RMS) amplitude. A float sets the
-        time-domain RMS amplitude over all channels and realizations. A tuple
-        supplies one time-domain RMS amplitude per input channel and must have
-        length ``nu``. Default is ``1.0``.
+    amplitude : real number or 1D array-like of real numbers, optional
+        Desired time-domain root-mean-square (RMS) amplitude. A scalar sets the
+        time-domain RMS amplitude over all channels and realizations. A 1D
+        array-like supplies one time-domain RMS amplitude per input channel and
+        must have length ``nu``. Values must be finite and strictly positive.
+        The returned metadata is converted to a ``float`` or ``tuple``. Default
+        is ``1.0``.
     nu : int, optional
         Number of input channels. Default is ``1``.
     n_realizations : int, optional
@@ -129,16 +130,17 @@ def random_phase_multisine(
         seed=seed,
     )
 
+    amplitude = _convert_amplitude(amplitude)
     freq = _create_frequency_info(n_samples, fs, f_min, f_max)
     rng = np.random.default_rng(seed)
 
-    n_freqs = freq.freqs.size
+    n_bins = freq.freqs.size
 
     # Create multisine in frequency domain
-    spectrum = np.zeros((n_freqs, nu, n_realizations), dtype=complex)
+    spectrum = np.zeros((n_bins, nu, n_realizations), dtype=complex)
     spectrum[freq.excited_bins] = 1 + 0j
 
-    phase = 1j * rng.uniform(0, 2 * np.pi, (n_freqs, nu, n_realizations))
+    phase = 1j * rng.uniform(0, 2 * np.pi, (n_bins, nu, n_realizations))
     spectrum *= np.exp(phase)
 
     # Convert to time domain
@@ -157,7 +159,7 @@ def random_phase_orthogonal_multisine(
     fs: float,
     nu: int,
     *,
-    amplitude: float | tuple[float, ...] = 1.0,
+    amplitude: Real | ArrayLike = 1.0,
     n_experiments: int = 1,
     independent_subexperiments: bool = True,
     f_min: float | None = None,
@@ -174,11 +176,13 @@ def random_phase_orthogonal_multisine(
         Sampling frequency in Hz.
     nu : int
         Number of input channels.
-    amplitude : float or tuple of float, optional
-        Desired time-domain root-mean-square (RMS) amplitude. A float sets the
-        time-domain RMS amplitude over all channels and experiments. A tuple
-        supplies one time-domain RMS amplitude per input channel and must have
-        length ``nu``. Default is ``1.0``.
+    amplitude : real number or 1D array-like of real numbers, optional
+        Desired time-domain root-mean-square (RMS) amplitude. A scalar sets the
+        time-domain RMS amplitude over all channels and experiments. A 1D
+        array-like supplies one time-domain RMS amplitude per input channel and
+        must have length ``nu``. Values must be finite and strictly positive.
+        The returned metadata is converted to a ``float`` or ``tuple``. Default
+        is ``1.0``.
     n_experiments : int, optional
         Number of orthogonal multisine experiments. Default is ``1``.
     independent_subexperiments : bool, optional
@@ -216,21 +220,22 @@ def random_phase_orthogonal_multisine(
         seed=seed,
     )
 
+    amplitude = _convert_amplitude(amplitude)
     freq = _create_frequency_info(n_samples, fs, f_min, f_max)
     rng = np.random.default_rng(seed)
 
-    n_freqs = freq.freqs.size
+    n_bins = freq.freqs.size
 
     # Create multisine in frequency domain
     dft_matrix = np.fft.fft(np.eye(nu)) / np.sqrt(nu)
-    spectrum = np.zeros((n_freqs, nu, nu, n_experiments), dtype=complex)
+    spectrum = np.zeros((n_bins, nu, nu, n_experiments), dtype=complex)
     spectrum[freq.excited_bins] = dft_matrix[None, :, :, None]
 
-    phase = 1j * rng.uniform(0, 2 * np.pi, (n_freqs, nu, n_experiments))
+    phase = 1j * rng.uniform(0, 2 * np.pi, (n_bins, nu, n_experiments))
     spectrum *= np.exp(phase)[:, :, None, :]
 
     if independent_subexperiments:
-        experiment_phase = 1j * rng.uniform(0, 2 * np.pi, (n_freqs, nu, n_experiments))
+        experiment_phase = 1j * rng.uniform(0, 2 * np.pi, (n_bins, nu, n_experiments))
         spectrum *= np.exp(experiment_phase)[:, None, :, :]
 
     # Convert to time domain
@@ -248,7 +253,7 @@ def _validate_arguments(
     *,
     n_samples: int,
     fs: float,
-    amplitude: float | tuple[float, ...],
+    amplitude: Real | ArrayLike,
     nu: int,
     additional_count: int,
     additional_count_name: str,
@@ -262,7 +267,6 @@ def _validate_arguments(
     _validate_strictly_positive_int(additional_count, additional_count_name)
     _validate_strictly_positive_int(seed, "seed")
     _validate_amplitude(amplitude, nu)
-
     if n_samples < MIN_NUMBER_OF_SAMPLES:
         msg = (
             f"The number of samples must be at least {MIN_NUMBER_OF_SAMPLES} to "
@@ -283,26 +287,50 @@ def _validate_sampling_frequency(fs: float) -> None:
         raise ValueError(msg)
 
 
-def _validate_amplitude(amplitude: float | tuple[float, ...], nu: int) -> None:
-    if isinstance(amplitude, tuple):
-        if len(amplitude) != nu:
-            msg = f"amplitude must contain one value per input channel, got {amplitude!r}."
-            raise ValueError(msg)
-        if not all(isinstance(value, float) for value in amplitude):
-            msg = f"amplitude must be a tuple of floats, got {amplitude!r}."
-            raise TypeError(msg)
-        if any(not np.isfinite(value) or value <= 0 for value in amplitude):
-            msg = (
-                f"amplitude must contain only finite, strictly positive values, "
-                f"got {amplitude!r}."
-            )
-            raise ValueError(msg)
-    elif not isinstance(amplitude, float):
-        msg = f"amplitude must be a float or a tuple of floats, got {amplitude!r}."
+def _validate_amplitude(
+    amplitude: Real | ArrayLike,
+    nu: int,
+) -> None:
+    if isinstance(amplitude, (bool, np.bool_)):
+        msg = (
+            "amplitude must be a real number or 1D array-like of real numbers, "
+            f"got {amplitude!r}."
+        )
         raise TypeError(msg)
-    elif not np.isfinite(amplitude) or amplitude <= 0:
-        msg = f"amplitude must be finite and strictly positive, got {amplitude!r}."
+
+    if isinstance(amplitude, Real):
+        float_amplitude = float(amplitude)
+        if not np.isfinite(float_amplitude) or float_amplitude <= 0:
+            msg = f"amplitude must be finite and strictly positive, got {amplitude!r}."
+            raise ValueError(msg)
+        return
+
+    amplitudes = np.asarray(amplitude, dtype=object)
+    if amplitudes.ndim != 1:
+        msg = f"amplitude must be a real number or 1D array-like, got {amplitude!r}."
+        raise TypeError(msg)
+    if amplitudes.size != nu:
+        msg = f"amplitude must contain one value per input channel, got {amplitude!r}."
         raise ValueError(msg)
+    if any(
+        isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+        for value in amplitudes
+    ):
+        msg = f"amplitude must contain only real values, got {amplitude!r}."
+        raise TypeError(msg)
+
+    float_amplitudes = tuple(float(value) for value in amplitudes)
+    if any(not np.isfinite(value) or value <= 0 for value in float_amplitudes):
+        msg = (
+            f"amplitude must contain only finite, strictly positive values, got {amplitude!r}."
+        )
+        raise ValueError(msg)
+
+
+def _convert_amplitude(amplitude: Real | ArrayLike) -> float | tuple[float, ...]:
+    if isinstance(amplitude, Real):
+        return float(amplitude)
+    return tuple(float(value) for value in np.asarray(amplitude))
 
 
 def _validate_strictly_positive_int(value: int, name: str) -> None:
@@ -326,10 +354,10 @@ def _create_frequency_info(
     f_res = fs / n_samples
     f_min_bin, f_max_bin = _get_frequency_bins(n_samples, fs, f_min, f_max)
 
-    n_freqs = n_samples // 2 + 1
-    freqs = np.arange(n_freqs) * f_res
+    n_bins = n_samples // 2 + 1
+    freqs = np.arange(n_bins) * f_res
     excited_bins = np.arange(f_min_bin, f_max_bin + 1)
-    non_excited_bins = np.setdiff1d(np.arange(n_freqs), excited_bins)
+    non_excited_bins = np.setdiff1d(np.arange(n_bins), excited_bins)
 
     return FrequencyInfo(
         fs=fs,
