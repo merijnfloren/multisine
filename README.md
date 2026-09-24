@@ -13,7 +13,7 @@ Its API, validation, and feature set will grow in later releases.
 ## Install
 
 Requires Python 3.10 or later.
-Its only runtime dependency is NumPy (1.24 or later).
+The only runtime dependency is NumPy (1.24 or later).
 
 Install with `pip`:
 
