@@ -49,4 +49,11 @@ print(multisine.u.shape)  # (1024, 2)
 print(orthogonal_multisine.u.shape)  # (1024, 2, 2)
 ```
 
+## Related packages
+
+Looking for:
+
+- nonparametric estimation of the best linear approximation? See [best-linear-approximation](https://github.com/merijnfloren/best-linear-approximation).
+- parametric state-space models, linear or nonlinear? See [freq-statespace](https://github.com/merijnfloren/freq-statespace).
+
 [pintelon-schoukens]: https://doi.org/10.1002/9781118287422
