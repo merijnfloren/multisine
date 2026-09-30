@@ -10,7 +10,7 @@ This initial 0.1.x release is deliberately limited in scope.
 It provides only random-phase multisine and orthogonal multisine generation.
 Its API, validation, and feature set will grow in later releases.
 
-## Install
+## Installation
 
 Requires Python 3.10 or later.
 The only runtime dependency is NumPy (1.24 or later).
